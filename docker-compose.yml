@@ -1,0 +1,90 @@
+# ============================================================
+# vLLM 一键编排文件
+# 适配：2 x RTX 4090 (48GB VRAM) | CUDA 12.8 | Driver 570
+# 模型：Qwen3.6-35B-A3B-FP8（256K 上下文 / 思考模型 / 工具调用）
+# 说明：所有可调参数都从 .env 读取，docker-compose.yml 只列模板
+# ============================================================
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-server
+    restart: unless-stopped
+    runtime: nvidia
+    # 使用 NVIDIA_VISIBLE_DEVICES / NVIDIA_DRIVER_CAPABILITIES 控制 GPU
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      # ---- 模型相关（值在 .env 里） ----
+      MODEL_NAME: ${MODEL_NAME}
+      HF_MODEL_PATH: ${HF_MODEL_PATH:-/root/.cache/huggingface}
+      # ---- 推理参数（值在 .env 里） ----
+      TENSOR_PARALLEL_SIZE: ${TENSOR_PARALLEL_SIZE:-1}
+      GPU_MEMORY_UTILIZATION: ${GPU_MEMORY_UTILIZATION:-0.90}
+      MAX_MODEL_LEN: ${MAX_MODEL_LEN:-8192}
+      DTYPE: ${DTYPE:-auto}
+      KV_CACHE_DTYPE: ${KV_CACHE_DTYPE:-auto}
+      QUANTIZATION: ${QUANTIZATION:-}
+      # ---- 服务参数 ----
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8000}
+      # ---- 性能与吞吐 ----
+      MAX_NUM_SEQS: ${MAX_NUM_SEQS:-256}
+      MAX_NUM_BATCHED_TOKENS: ${MAX_NUM_BATCHED_TOKENS:-8192}
+      BLOCK_SIZE: ${BLOCK_SIZE:-16}
+      SWAP_SPACE: ${SWAP_SPACE:-4}
+      ENABLE_PREFIX_CACHING: ${ENABLE_PREFIX_CACHING:-true}
+      ENABLE_CHUNKED_PREFILL: ${ENABLE_CHUNKED_PREFILL:-true}
+      # ---- 工具调用 / 思考解析（新增） ----
+      ENABLE_AUTO_TOOL_CHOICE: ${ENABLE_AUTO_TOOL_CHOICE:-true}
+      TOOL_CALL_PARSER: ${TOOL_CALL_PARSER:-qwen3_coder}
+      REASONING_PARSER: ${REASONING_PARSER:-qwen3}
+      CHAT_TEMPLATE_KWARGS: ${CHAT_TEMPLATE_KWARGS:-'{"enable_thinking":false}'}
+      # ---- 日志（新增） ----
+      ENABLE_LOG_REQUESTS: ${ENABLE_LOG_REQUESTS:-true}
+      # ---- 鉴权（可选）----
+      VLLM_API_KEY: ${VLLM_API_KEY:-}
+      # ---- 网络与代理 ----
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
+      HF_HUB_ENABLE_HF_TRANSFER: ${HF_HUB_ENABLE_HF_TRANSFER:-1}
+      # ---- NCCL（多卡）----
+      NCCL_IB_HCA_LIST: ${NCCL_IB_HCA_LIST:-}
+      NCCL_DEBUG: ${NCCL_DEBUG:-WARN}
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ./models:/root/.cache/huggingface
+      - ./logs:/var/log/vllm
+      - /etc/localtime:/etc/localtime:ro
+    command:
+      - --model=${MODEL_NAME}
+      - --tensor-parallel-size=${TENSOR_PARALLEL_SIZE:-1}
+      - --gpu-memory-utilization=${GPU_MEMORY_UTILIZATION:-0.90}
+      - --max-model-len=${MAX_MODEL_LEN:-8192}
+      - --dtype=${DTYPE:-auto}
+      - --kv-cache-dtype=${KV_CACHE_DTYPE:-auto}
+      - --max-num-seqs=${MAX_NUM_SEQS:-256}
+      - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-8192}
+      - --block-size=${BLOCK_SIZE:-16}
+      - --host=0.0.0.0
+      - --port=8000
+      - --served-model-name=${SERVED_MODEL_NAME:-default}
+      # ---- 工具调用（新增） ----
+      - --enable-auto-tool-choice
+      - --tool-call-parser=${TOOL_CALL_PARSER:-qwen3_coder}
+      # ---- 思考内容解析（新增） ----
+      - --reasoning-parser=${REASONING_PARSER:-qwen3}
+      - --default-chat-template-kwargs=${CHAT_TEMPLATE_KWARGS:-'{"enable_thinking":false}'}
+      # ---- 日志（新增） ----
+      - --enable-log-requests
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/v1/models || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
