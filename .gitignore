@@ -4,6 +4,10 @@ models/
 *.bin
 *.gguf
 
+# 锁文件
+*.lock
+.lock/
+
 # 日志
 logs/
 *.log

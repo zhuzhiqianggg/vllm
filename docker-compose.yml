@@ -77,6 +77,7 @@ services:
       - --default-chat-template-kwargs=${CHAT_TEMPLATE_KWARGS:-'{"enable_thinking":false}'}
       # ---- 日志（新增） ----
       - --enable-log-requests
+      - --enable-prefix-caching
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/v1/models || exit 1"]
       interval: 30s

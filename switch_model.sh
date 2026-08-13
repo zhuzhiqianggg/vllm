@@ -122,6 +122,38 @@ VLLM_API_KEY=
 NCCL_IB_HCA_LIST=
 NCCL_DEBUG=WARN'
 
+# Profile: qwen3.6-27b-fp8 (FP8 量化版，低显存占用)
+PROFILES["qwen3.6-27b-fp8"]='# ============================================================
+# vLLM 环境变量 - Qwen3.6-27B-FP8 (FP8 量化模型)
+# 适配: 2 x RTX 4090 (48GB)
+# 特点: FP8 量化权重，体积小约 50%，推理速度快
+# ============================================================
+MODEL_NAME=/root/.cache/huggingface/Qwen__Qwen3.6-27B-FP8
+SERVED_MODEL_NAME=qwen3.6-27b-fp8
+HOST=0.0.0.0
+PORT=8000
+HF_ENDPOINT=https://hf-mirror.com
+HF_HUB_ENABLE_HF_TRANSFER=0
+TENSOR_PARALLEL_SIZE=2
+GPU_MEMORY_UTILIZATION=0.90
+MAX_MODEL_LEN=128000
+DTYPE=auto
+KV_CACHE_DTYPE=fp8
+MAX_NUM_SEQS=32
+MAX_NUM_BATCHED_TOKENS=8192
+BLOCK_SIZE=16
+SWAP_SPACE=8
+ENABLE_PREFIX_CACHING=true
+ENABLE_CHUNKED_PREFILL=true
+ENABLE_AUTO_TOOL_CHOICE=true
+TOOL_CALL_PARSER=qwen3_coder
+REASONING_PARSER=qwen3
+CHAT_TEMPLATE_KWARGS={"enable_thinking":false}
+ENABLE_LOG_REQUESTS=true
+VLLM_API_KEY=
+NCCL_IB_HCA_LIST=
+NCCL_DEBUG=WARN'
+
 # Profile: qwen3.6-27b-thinking (开启思考模式)
 PROFILES["qwen3.6-27b-thinking"]='# ============================================================
 # vLLM 环境变量 - Qwen3.6-27B + 思考模式开启

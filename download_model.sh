@@ -53,6 +53,7 @@ declare -A MODELS=(
 
   # Qwen3.6 系列（ dense 模型，推理速度快）
   ["qwen3.6-27b"]="Qwen/Qwen3.6-27B|bf16|54|通用对话/思考模型"
+  ["qwen3.6-27b-fp8"]="Qwen/Qwen3.6-27B-FP8|fp8|29|FP8量化/低显存"
   ["qwen3.6-27b-awq"]="Qwen/Qwen3.6-27B-Instruct-AWQ|awq|14|低显存/通用对话"
 )
 

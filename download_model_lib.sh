@@ -68,6 +68,41 @@ check_file_complete() {
   return 0
 }
 
+# 扁平化 snapshot 目录结构
+# huggingface_hub snapshot_download 会创建 snapshots/<commit_hash>/ 结构
+# 将文件从嵌套目录移动到目标目录根
+flatten_snapshot() {
+  local target="$1"
+  
+  # 检查是否存在 snapshots 子目录
+  local snapshot_dir
+  snapshot_dir=$(find "$target" -maxdepth 2 -type d -name "snapshots" 2>/dev/null | head -1)
+  
+  if [ -z "$snapshot_dir" ]; then
+    return 0
+  fi
+  
+  info "检测到 snapshot 嵌套结构，扁平化处理..."
+  
+  # 找到快照目录（通常是 master 或 commit hash）
+  local commit_dir
+  commit_dir=$(find "$snapshot_dir" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -1)
+  
+  if [ -z "$commit_dir" ]; then
+    return 0
+  fi
+  
+  info "移动文件: $commit_dir -> $target"
+  
+  # 移动所有文件到目标目录
+  mv "$commit_dir"/* "$target"/ 2>/dev/null
+  
+  # 清理空的嵌套目录
+  rm -rf "$snapshot_dir" 2>/dev/null
+  
+  ok "扁平化完成"
+}
+
 # -------- 方式1: huggingface_hub SDK 下载（推荐） --------
 # 支持断点续传，自动重试
 download_hf_sdk() {
@@ -79,12 +114,20 @@ download_hf_sdk() {
   info "仓库: $repo_id"
   info "目标: $target"
 
-  # 检查是否已完整下载
-  if [ -f "$target" ] && check_file_complete "$target/config.json" 10000; then
+  # 检查是否已完整下载（兼容多种命名格式）
+  if [ -f "$target/config.json" ]; then
     local safetensors_count
-    safetensors_count=$(ls "$target"/model-*.safetensors 2>/dev/null | wc -l)
+    safetensors_count=$(find "$target" -maxdepth 1 -name "*.safetensors" 2>/dev/null | wc -l)
+    # 也检查嵌套 snapshot 结构
+    if [ "$safetensors_count" -lt 10 ]; then
+      local nested_count
+      nested_count=$(find "$target" -name "*.safetensors" 2>/dev/null | wc -l)
+      safetensors_count=$((safetensors_count + nested_count))
+    fi
     if [ "$safetensors_count" -ge 10 ]; then
       ok "模型已存在且完整 ($safetensors_count 个 safetensors 文件)"
+      # 如果有 snapshot 嵌套结构，先扁平化
+      flatten_snapshot "$target"
       return 0
     fi
     info "模型部分存在，将断点续传..."
@@ -131,6 +174,8 @@ PY
     local exit_code=$?
     if [ $exit_code -eq 0 ]; then
       ok "下载完成"
+      # 扁平化 snapshot 结构
+      flatten_snapshot "$target"
       return 0
     fi
 
@@ -246,28 +291,54 @@ download_modelscope() {
   python3 << PY 2>&1
 from modelscope import snapshot_download
 import os
+import shutil
 
-# 构造 ModelScope 兼容的路径
-# HF 路径: Qwen/Qwen3.6-27B -> ModelScope 路径: Qwen/Qwen3.6-27B
 ms_repo = "${repo_id}"
+target = "${target}"
 
 try:
     path = snapshot_download(
         ms_repo,
         cache_dir="${MODELS_DIR}",
     )
-    print(f"SUCCESS:{path}")
+    # 如果下载路径不在目标目录，移动文件
+    if path != target and os.path.exists(path):
+        if not os.path.exists(target):
+            os.makedirs(target, exist_ok=True)
+        for f in os.listdir(path):
+            src = os.path.join(path, f)
+            dst = os.path.join(target, f)
+            if os.path.isfile(src):
+                shutil.copy2(src, dst)
+            elif os.path.isdir(src):
+                if not os.path.exists(dst):
+                    shutil.copytree(src, dst)
+        # 清理 ModelScope 创建的临时目录
+        if path.startswith("${MODELS_DIR}"):
+            shutil.rmtree(path, ignore_errors=True)
+    print(f"SUCCESS:{target}")
 except Exception as e:
     print(f"ERROR:{e}")
-    # 尝试不同的命名格式
     try:
-        # 尝试把 / 替换为 -
         alt_name = ms_repo.replace('/', '-')
         path = snapshot_download(
             alt_name,
             cache_dir="${MODELS_DIR}",
         )
-        print(f"SUCCESS(alt):{path}")
+        if path != target and os.path.exists(path):
+            if not os.path.exists(target):
+                os.makedirs(target, exist_ok=True)
+            for f in os.listdir(path):
+                src = os.path.join(path, f)
+                dst = os.path.join(target, f)
+                if os.path.isfile(src):
+                    shutil.copy2(src, dst)
+                elif os.path.isdir(src):
+                    if not os.path.exists(dst):
+                        shutil.copytree(src, dst)
+            if path.startswith("${MODELS_DIR}"):
+                shutil.rmtree(path, ignore_errors=True)
+        print(f"SUCCESS(alt):{target}")
     except Exception as e2:
         print(f"ERROR2:{e2}")
         import sys
